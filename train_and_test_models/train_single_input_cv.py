@@ -45,7 +45,7 @@ if __name__ == "__main__":
     data_path ="data/"
     acoustic_path = "data/audio/IS10_featureset"
     rhythm_file = "rhythm_v6.csv"
-    feats = "acoustic"
+    feats = "rhythm"
     result_file = "models/results.csv"
     rnn = False
 
@@ -67,7 +67,7 @@ if __name__ == "__main__":
     all_test_losses = []
 
     # 2. CREATE NN
-    ratings = ["acc", "flu", "comp"]
+    ratings = ["flu", "comp"]
     lrs = [1e-04]
     for rating in ratings:
         for lr in lrs:
@@ -75,9 +75,9 @@ if __name__ == "__main__":
             predictions_from_cv = []
             gold_label_from_cv = []
 
-            model_type = "AcousticFNNLnIS10"
+            model_type = "RhythmFFN_h3"
 
-            for i in range(0, 5):
+            for i in range(0, len(train_data)):
                 cv_idx = i + 1
                 print("Starting CV{0}".format(cv_idx))
 
@@ -93,14 +93,14 @@ if __name__ == "__main__":
                 # test_model = AcousticRNN(params=params)
                 # model = AcousticSingleAttn(params=params)
                 # test_model = AcousticSingleAttn(params=params)
-                # model = SimpleFFN(params=params)
-                # test_model = SimpleFFN(params=params)
-                model = AcousticFFN(params=params)
-                test_model = AcousticFFN(params=params)
+                model = SimpleFFN(params=params)
+                test_model = SimpleFFN(params=params)
+                # model = AcousticFFN(params=params)
+                # test_model = AcousticFFN(params=params)
 
                 optimizer = torch.optim.Adam(lr=lr, params=model.parameters(), weight_decay=params.weight_decay)
 
-                loss_func = torch.nn.MSELoss()
+                loss_func = torch.nn.MSELoss(reduction='mean')
 
                 model = model.to(device)
                 print(model)
@@ -175,6 +175,7 @@ if __name__ == "__main__":
                     result_file=result_file,
                     model_type=model_type,
                     lr=lr,
+                    loss_func=loss_func,
                     device=device,
                     gold_labels=gold_label_from_cv,
                     pred_labels=predictions_from_cv

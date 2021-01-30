@@ -45,19 +45,20 @@ if __name__ == "__main__":
     data_path ="data/"
     acoustic_path = "data/audio/IS09_summary"
     rhythm_file = "rhythm_v6.csv"
-    feats = "acoustic"
+    feats = "rhythm"
     result_file = "models/results.csv"
     rnn = False
 
-    data = pdp.DataPrep(data_path=data_path, acoustic_path=acoustic_path, rhythm_file=rhythm_file, rnn=rnn)
+    dataset = pdp.DataPrep(data_path=data_path, acoustic_path=acoustic_path, rhythm_file=rhythm_file, rnn=rnn)
+    dataset.generate_cv_data()
 
     """
     raw_feat, raw_feat_len, phono_feat, phono_feat_len, phonetic_feat, ys_acc, ys_flu, ys_comp
     """
 
-    print("type of data", type(data))
-    train_data = data.get_train()
-    test_data = data.get_test()
+    print("type of data", type(dataset))
+    train_data = dataset.get_train()
+    test_data = dataset.get_test()
 
     print("DATASET CREATED")
     # exit()
@@ -73,7 +74,7 @@ if __name__ == "__main__":
             predictions_from_cv = []
             gold_label_from_cv = []
 
-            model_type = "AcousticFFNLnMTL_IS09"
+            model_type = "RhythmFFNMTL_128_h7"
 
             for i in range(0, 5):
                 cv_idx = i + 1
@@ -87,14 +88,14 @@ if __name__ == "__main__":
                 model_name = "{0}_{1}_lr{2}".format(rating, model_type, lr)
                 train_state = make_train_state(lr, model_save_file)
 
-                model = AcousticFFNmtl(params=params)
-                test_model = AcousticFFNmtl(params=params)
+                # model = AcousticFFNmtl(params=params)
+                # test_model = AcousticFFNmtl(params=params)
                 # model = AcousticRNNmtl(params=params)
                 # test_model = AcousticRNNmtl(params=params)
                 # model = AcousticSingleAttn(params=params)
                 # test_model = AcousticSingleAttn(params=params)
-                # model = SimpleFFNmtl(params=params)
-                # test_model = SimpleFFNmtl(params=params)
+                model = SimpleFFNmtl(params=params)
+                test_model = SimpleFFNmtl(params=params)
 
                 optimizer = torch.optim.Adam(lr=lr, params=model.parameters(), weight_decay=params.weight_decay)
 

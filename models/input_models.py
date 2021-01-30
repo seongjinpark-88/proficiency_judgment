@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from sklearn.svm import SVR
+
 from models.attn_models import *
 
 
@@ -285,21 +287,27 @@ class SimpleFFN(nn.Module):
 
     def __init__(self, params):
         super(SimpleFFN, self).__init__()
-
+        self.dropout = params.dropout
         # self.num_layers = params.num_fc_layers
-        self.linear = nn.Linear(params.phono_dim, params.fc_hidden_dim)
-        self.fc_1 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
-        self.fc_2 = nn.Linear(params.fc_hidden_dim, 64)
-        self.fc_3 = nn.Linear(64, 1)
+        self.linear = nn.Linear(params.phono_dim, params.fc_hidden_dim_phon)
+        self.fc_1 = nn.Linear(params.fc_hidden_dim_phon, params.fc_hidden_dim_phon)
+        self.fc_2 = nn.Linear(params.fc_hidden_dim_phon, params.fc_hidden_dim_phon)
+        self.fc_3 = nn.Linear(params.fc_hidden_dim_phon, params.fc_hidden_dim_phon)
+        # self.fc_4 = nn.Linear(params.fc_hidden_dim_phon, 1)
+        self.fc_4 = nn.Linear(params.fc_hidden_dim_phon, 1)
+        # self.fc_5 = nn.Linear(params.fc_hidden_dim_phon, 1)
 
     def forward(self, input_features):
-        print(input_features.size())
-        encoded = F.dropout(torch.tanh(self.linear(input_features)), 0.2)
-        fcn1 = F.dropout(torch.tanh(self.fc_1(encoded)), 0.2)
-        fcn2 = F.dropout(torch.tanh(self.fc_2(fcn1)), 0.2)
-        self.prediction = self.fc_3(fcn2)
+        # print(input_features.size())
+        encoded = F.dropout(torch.tanh(self.linear(input_features)), self.dropout)
+        fcn1 = F.dropout(torch.tanh(self.fc_1(encoded)), self.dropout)
+        fcn2 = F.dropout(torch.tanh(self.fc_2(fcn1)), self.dropout)
+        fcn3 = F.dropout(torch.tanh(self.fc_2(fcn2)), self.dropout)
+        # fcn4 = F.dropout(torch.tanh(self.fc_4(fcn3)), self.dropout)
+        self.prediction = self.fc_4(fcn3)
 
         return self.prediction
+
 
 class SimpleFFNmtl(nn.Module):
 
@@ -308,30 +316,42 @@ class SimpleFFNmtl(nn.Module):
 
         # self.num_layers = params.num_fc_layers
 
-        self.linear = nn.Linear(params.phono_dim, params.fc_hidden_dim)
+        self.dropout = params.dropout
+        self.linear = nn.Linear(params.phono_dim, params.fc_hidden_dim_phon)
+        self.fc_1 = nn.Linear(params.fc_hidden_dim_phon, params.fc_hidden_dim_phon)
+        self.fc_2 = nn.Linear(params.fc_hidden_dim_phon, params.fc_hidden_dim_phon)
+        self.fc_3 = nn.Linear(params.fc_hidden_dim_phon, params.fc_hidden_dim_phon)
 
-        self.fc_acc_1 = nn.Linear(params.fc_hidden_dim, 256)
-        self.fc_acc_2 = nn.Linear(256, 128)
-        self.fc_acc = nn.Linear(128, 1)
 
-        self.fc_flu_1 = nn.Linear(params.fc_hidden_dim, 256)
-        self.fc_flu_2 = nn.Linear(256, 128)
-        self.fc_flu = nn.Linear(128, 1)
+        self.fc_acc_1 = nn.Linear(params.fc_hidden_dim_phon, params.fc_hidden_dim_phon)
+        self.fc_acc_2 = nn.Linear(params.fc_hidden_dim_phon, params.fc_hidden_dim_phon)
+        self.fc_acc = nn.Linear(params.fc_hidden_dim_phon, 1)
 
-        self.fc_com_1 = nn.Linear(params.fc_hidden_dim, 256)
-        self.fc_com_2 = nn.Linear(256, 128)
-        self.fc_com = nn.Linear(128, 1)
+        self.fc_flu_1 = nn.Linear(params.fc_hidden_dim_phon, params.fc_hidden_dim_phon)
+        self.fc_flu_2 = nn.Linear(params.fc_hidden_dim_phon, params.fc_hidden_dim_phon)
+        self.fc_flu = nn.Linear(params.fc_hidden_dim_phon, 1)
+
+        self.fc_com_1 = nn.Linear(params.fc_hidden_dim_phon, params.fc_hidden_dim_phon)
+        self.fc_com_2 = nn.Linear(params.fc_hidden_dim_phon, params.fc_hidden_dim_phon)
+        self.fc_com = nn.Linear(params.fc_hidden_dim_phon, 1)
 
     def forward(self, input_features):
-        shared_layer = torch.tanh(F.dropout(self.linear(input_features), 0.2))
+        shared_layer = F.dropout(torch.tanh(self.linear(input_features)), self.dropout)
+        shared_layer = F.dropout(torch.tanh(self.fc_1(shared_layer)), self.dropout)
+        shared_layer = F.dropout(torch.tanh(self.fc_2(shared_layer)), self.dropout)
+        shared_layer = F.dropout(torch.tanh(self.fc_3(shared_layer)), self.dropout)
 
-        self.acc_inter = F.dropout(self.fc_acc_2(torch.tanh(F.dropout(self.fc_acc_1(shared_layer), 0.2))), 0.2)
-        self.flu_inter = F.dropout(self.fc_flu_2(torch.tanh(F.dropout(self.fc_flu_1(shared_layer), 0.2))), 0.2)
-        self.com_inter = F.dropout(self.fc_com_2(torch.tanh(F.dropout(self.fc_com_1(shared_layer), 0.2))), 0.2)
+        self.acc_inter = self.fc_acc_2(F.dropout(torch.tanh(self.fc_acc_1(shared_layer)), self.dropout))
+        self.flu_inter = self.fc_flu_2(F.dropout(torch.tanh(self.fc_flu_1(shared_layer)), self.dropout))
+        self.com_inter = self.fc_com_2(F.dropout(torch.tanh(self.fc_com_1(shared_layer)), self.dropout))
 
-        self.acc_out = self.fc_acc(torch.tanh(self.acc_inter))
-        self.flu_out = self.fc_flu(torch.tanh(self.flu_inter))
-        self.com_out = self.fc_com(torch.tanh(self.com_inter))
+        self.acc_out = self.fc_acc(F.dropout(self.acc_inter, self.dropout))
+        self.flu_out = self.fc_flu(F.dropout(self.flu_inter, self.dropout))
+        self.com_out = self.fc_com(F.dropout(self.com_inter, self.dropout))
+
+        # self.acc_out = self.fc_acc(F.dropout(torch.tanh(shared_layer), self.dropout))
+        # self.flu_out = self.fc_flu(F.dropout(torch.tanh(shared_layer), self.dropout))
+        # self.com_out = self.fc_com(F.dropout(torch.tanh(shared_layer), self.dropout))
 
         return [self.acc_out, self.flu_out, self.com_out]
 
@@ -340,22 +360,31 @@ class AcousticFFN(nn.Module):
     def __init__(self, params):
         super(AcousticFFN, self).__init__()
 
-        # self.num_layers = params.num_fc_layers
-        self.linear = nn.Linear(params.acoustic_dim, 32)
-        self.fc_1 = nn.Linear(32, params.fc_hidden_dim)
-        self.fc_2 = nn.Linear(params.fc_hidden_dim, 1)
-        # self.fc_3 = nn.Linear(params.fc_hidden_dim, 1)
+        self.dropout = params.dropout
+        self.linear = nn.Linear(params.acoustic_dim, params.fc_hidden_dim_acoustic)
+        self.fc_1 = nn.Linear(params.fc_hidden_dim_acoustic, params.fc_hidden_dim_acoustic)
+        self.fc_2 = nn.Linear(params.fc_hidden_dim_acoustic, 64)
+        self.fc_3 = nn.Linear(64, 1)
 
     def forward(self, input_features):
         # print(input_features.size())
         # input_features = torch.mean(input_features, dim=1)
         # print(input_features.size())
-        encoded = F.dropout(torch.tanh(self.linear(input_features)), 0.3)
-        fcn1 = F.dropout(torch.tanh(self.fc_1(encoded)), 0.3)
-        # fcn2 = F.dropout(torch.tanh(self.fc_2(fcn1)), 0.3)
-        self.prediction = self.fc_2(fcn1)
+        encoded = F.dropout(torch.tanh(self.linear(input_features)), self.dropout)
+        fcn1 = F.dropout(torch.tanh(self.fc_1(encoded)), self.dropout)
+        fcn2 = F.dropout(torch.tanh(self.fc_2(fcn1)), self.dropout)
+        self.prediction = self.fc_3(fcn2)
 
         return self.prediction
+
+
+# class AcousticSVR():
+#     def __init__(self):
+#         self.svr_rbf = SVR(kernel='rbf', C=100, gamma=0.1, epsilon=.1)
+#
+#     def forward(self, input_features, label):
+#         return self.svr_rbf.fit(input_features, label).predict(input_features)
+
 
 class AcousticFFNmtl(nn.Module):
 

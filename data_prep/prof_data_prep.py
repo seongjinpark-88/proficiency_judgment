@@ -65,15 +65,21 @@ class PrepData:
         self.rhythm_feats = get_phonological_features(self.rhythm)
 
     def create_cv(self, data_dir):
-        cv1 = ["S19", "S03", "S02"]
-        cv2 = ["S23", "S05", "S04"]
-        cv3 = ["S24", "S07", "S21"]
-        cv4 = ["S25", "S08", "S22"]
-        cv5 = ["S28", "S09", "S26"]
+        # cv1 = ["S19", "S03", "S02"]
+        # cv2 = ["S23", "S05", "S04"]
+        # cv3 = ["S24", "S07", "S21"]
+        # cv4 = ["S25", "S08", "S22"]
+        # cv5 = ["S28", "S09", "S26"]
+        # cv1 = ["S19", "S02"]
+        # cv2 = ["S23", "S04"]
+        # cv3 = ["S24", "S21"]
+        # cv4 = ["S25", "S22"]
+        # cv5 = ["S28", "S26"]
 
-        cv = [cv1, cv2, cv3, cv4, cv5]
+        # cv = [cv1, cv2, cv3, cv4, cv5]
+        cv = ["S19", "S23", "S24", "S25", "S28", "S02", "S04", "S21", "S22", "S26"]
 
-        for i in range(0, 5):
+        for i in range(0, len(cv)):
             train_dict = defaultdict(dict)
             test_dict = defaultdict(dict)
             test_spk_list = cv[i]
