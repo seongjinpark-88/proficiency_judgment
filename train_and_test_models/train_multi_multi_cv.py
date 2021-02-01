@@ -1,7 +1,8 @@
 import os
 import random
 import sys
-sys.path.append("/home/seongjinpark/research/git_repo/proficiency_judgment")
+# sys.path.append("/home/seongjinpark/research/git_repo/proficiency_judgment")
+sys.path.append("/home/paperspace/proficiency_judgment")
 
 import numpy as np
 import data_prep.prof_data_prep as pdp
@@ -36,7 +37,7 @@ model_save_path = "output/models/"
 # make sure the full save path exists; if not, create it
 os.system('if [ ! -d "{0}" ]; then mkdir -p {0}; fi'.format(model_save_path))
 # set dir to plot the loss/accuracy curves for training
-model_plot_path = "../models/output/plots/"
+model_plot_path = "output/plots/"
 os.system('if [ ! -d "{0}" ]; then mkdir -p {0}; fi'.format(model_plot_path))
 
 if __name__ == "__main__":
@@ -47,7 +48,7 @@ if __name__ == "__main__":
     data_path ="data/"
     acoustic_path = "data/audio/IS09_featureset"
     rhythm_file = "rhythm_v6.csv"
-    feats = "AcousticPhon"
+    feats = "AudioPhon"
     result_file = "models/results.csv"
     rnn = False
 
@@ -76,7 +77,7 @@ if __name__ == "__main__":
             predictions_from_cv = []
             gold_label_from_cv = []
 
-            model_type = "AcousticPhonMTLNN"
+            model_type = "AudioPhonMTLNN"
 
             for i in range(0, 5):
                 cv_idx = i + 1
