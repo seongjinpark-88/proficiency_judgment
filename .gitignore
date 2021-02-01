@@ -2,6 +2,8 @@ output/
 data/
 
 /models/output/
+models/__pycache__/
+models/parameters/__pycache__/
 
 *.pth
 *.pt
