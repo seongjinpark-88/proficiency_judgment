@@ -992,6 +992,8 @@ class MultiInput_multi_cv(nn.Module):
             self.Linear = nn.Linear(params.phono_dim, params.fc_hidden_dim)
             self.PhonLinear1 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
             self.PhonLinear2 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+            self.PhonLinear3 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+            self.PhonLinear4 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
 
             input_size = [params.fc_hidden_dim, params.fc_hidden_dim]
 
@@ -1097,12 +1099,14 @@ class MultiInput_multi_cv(nn.Module):
             audio_outputs, audio_hidden = self.AudioGRULayer(audio_packed_feats)
 
             audio_encoded = F.dropout(audio_hidden[-1], 0.2)
-            audio_layer_inter = F.dropout(torch.tanh(self.AudioLinear1(audio_encoded)), 0.2)
-            audio_layer = F.dropout(torch.tanh(self.AudioLinear2(audio_layer_inter)), 0.2)
+            audio_layer_inter = F.dropout(torch.tanh(self.AudioLinear1(audio_encoded)), self.dropout)
+            audio_layer = F.dropout(torch.tanh(self.AudioLinear2(audio_layer_inter)), self.dropout)
 
-            phon_encoded = F.dropout(torch.tanh(self.Linear(phon_feats)), 0.2)
-            phon_layer_inter = F.dropout(torch.tanh(self.PhonLinear1(phon_encoded)), 0.2)
-            phon_layer = F.dropout(torch.tanh(self.PhonLinear2(phon_layer_inter)), 0.2)
+            phon_encoded = F.dropout(torch.tanh(self.Linear(phon_feats)), self.dropout)
+            phon_layer_inter = F.dropout(torch.tanh(self.PhonLinear1(phon_encoded)), self.dropout)
+            phon_layer = F.dropout(torch.tanh(self.PhonLinear2(phon_layer_inter)), self.dropout)
+            phon_layer = F.dropout(torch.tanh(self.PhonLinear3(phon_layer_inter)), self.dropout)
+            phon_layer = F.dropout(torch.tanh(self.PhonLinear4(phon_layer_inter)), self.dropout)
 
             multiinputnet_output = self.multiinputnet([audio_layer, phon_layer])
 
