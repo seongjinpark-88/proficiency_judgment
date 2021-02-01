@@ -36,7 +36,7 @@ model_save_path = "output/models/"
 # make sure the full save path exists; if not, create it
 os.system('if [ ! -d "{0}" ]; then mkdir -p {0}; fi'.format(model_save_path))
 # set dir to plot the loss/accuracy curves for training
-model_plot_path = "output/plots/"
+model_plot_path = "../models/output/plots/"
 os.system('if [ ! -d "{0}" ]; then mkdir -p {0}; fi'.format(model_plot_path))
 
 if __name__ == "__main__":
@@ -47,20 +47,20 @@ if __name__ == "__main__":
     data_path ="data/"
     acoustic_path = "data/audio/IS09_featureset"
     rhythm_file = "rhythm_v6.csv"
-    feats = "audio"
+    feats = "AcousticPhon"
     result_file = "models/results.csv"
     rnn = False
 
-    dataset = pdp.DataPrep(data_path=data_path, acoustic_path=acoustic_path, rhythm_file=rhythm_file, rnn=rnn)
-    dataset.generate_cv_data()
+    data = pdp.DataPrep(data_path=data_path, acoustic_path=acoustic_path, rhythm_file=rhythm_file, rnn=rnn)
+    data.generate_cv_data()
 
     """
     raw_feat, raw_feat_len, phono_feat, phono_feat_len, phonetic_feat, ys_acc, ys_flu, ys_comp
     """
 
-    print("type of data", type(dataset))
-    train_data = dataset.get_train()
-    test_data = dataset.get_test()
+    print("type of data", type(data))
+    train_data = data.get_train()
+    test_data = data.get_test()
 
     print("DATASET CREATED")
     # exit()
@@ -69,14 +69,14 @@ if __name__ == "__main__":
 
     # 2. CREATE NN
     ratings = ["acc", "flu", "comp"]
-    lrs = [1e-03]
+    lrs = [1e-04]
     for rating in ratings:
         for lr in lrs:
 
             predictions_from_cv = []
             gold_label_from_cv = []
 
-            model_type = "AudioRNNMTL_2048_h4"
+            model_type = "AcousticPhonMTLNN"
 
             for i in range(0, 5):
                 cv_idx = i + 1
@@ -90,14 +90,8 @@ if __name__ == "__main__":
                 model_name = "{0}_{1}_lr{2}".format(rating, model_type, lr)
                 train_state = make_train_state(lr, model_save_file)
 
-                model = AudioRNNmtl(params=params)
-                test_model = AudioRNNmtl(params=params)
-                # model = AcousticFFNmtl(params=params)
-                # test_model = AcousticFFNmtl(params=params)
-                # model = AcousticRNNmtl(params=params)
-                # test_model = AcousticRNNmtl(params=params)
-                # model = SimpleFFNmtl(params=params)
-                # test_model = SimpleFFNmtl(params=params)
+                model = MultiInput_multi_cv(device=device, feats=feats, params=params)
+                test_model = MultiInput_multi_cv(device=device, feats=feats, params=params)
 
                 optimizer = torch.optim.Adam(lr=lr, params=model.parameters(), weight_decay=params.weight_decay)
 
@@ -109,7 +103,7 @@ if __name__ == "__main__":
                 # 3. TRAIN AND TEST MODEL
 
                 if not os.path.exists(model_save_file):
-                    train_and_predict_single_multi_cv(
+                    train_and_predict_embrace_multi_cv(
                         classifier=model,
                         train_state=train_state,
                         feats=feats,
@@ -166,7 +160,7 @@ if __name__ == "__main__":
 
                 test_model.to(device)
 
-                test_model_single_multi_cv(
+                test_model_multi_multi_cv(
                     classifier=test_model,
                     test_ds=test_ds,
                     cv_idx=cv_idx,
@@ -176,7 +170,6 @@ if __name__ == "__main__":
                     result_file=result_file,
                     model_type=model_type,
                     lr=lr,
-                    loss_func=loss_func,
                     device=device,
                     gold_labels=gold_label_from_cv,
                     pred_labels=predictions_from_cv

@@ -33,11 +33,7 @@ def plot_train_dev_curve(
     ax.set_ylabel(y_label)
 
     # depending on type of input, set the y axis boundaries
-    if set_axis_boundaries:
-        if losses:
-            ax.set_ylim([0.66, 0.72])
-        else:
-            ax.set_ylim([0.3, 1.0])
+    ax.set_ylim([0.0, 1.0])
 
     # create title and legend
     ax.set_title(title, loc="center", wrap=True)

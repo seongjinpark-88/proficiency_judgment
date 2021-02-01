@@ -1,8 +1,7 @@
-/output/
-/data/
+output/
+data/
 
 /models/output/
-/models/parameters/
 
 *.pth
 *.pt

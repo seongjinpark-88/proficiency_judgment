@@ -1,6 +1,8 @@
 import os
 import random
 import sys
+sys.path.append("/home/seongjinpark/research/git_repo/proficiency_judgment")
+
 import numpy as np
 import data_prep.prof_data_prep as pdp
 import torch
@@ -43,13 +45,14 @@ if __name__ == "__main__":
 
     # dir and parameter settings
     data_path ="data/"
-    acoustic_path = "data/audio/IS09_summary"
+    acoustic_path = "data/audio/IS09_featureset"
     rhythm_file = "rhythm_v6.csv"
-    feats = "AcousticPhon"
+    feats = "AudioPhon"
     result_file = "models/results.csv"
     rnn = False
 
     data = pdp.DataPrep(data_path=data_path, acoustic_path=acoustic_path, rhythm_file=rhythm_file, rnn=rnn)
+    data.generate_cv_data()
 
     """
     raw_feat, raw_feat_len, phono_feat, phono_feat_len, phonetic_feat, ys_acc, ys_flu, ys_comp
@@ -66,14 +69,14 @@ if __name__ == "__main__":
 
     # 2. CREATE NN
     ratings = ["acc", "flu", "comp"]
-    lrs = [1e-05]
+    lrs = [1e-04]
     for rating in ratings:
         for lr in lrs:
 
             predictions_from_cv = []
             gold_label_from_cv = []
 
-            model_type = "AcousticPhonLnSTL"
+            model_type = "AudioPhonSTLMNET"
 
             for i in range(0, 5):
                 cv_idx = i + 1
@@ -168,6 +171,7 @@ if __name__ == "__main__":
                     model_type=model_type,
                     lr=lr,
                     device=device,
+                    loss_func=loss_func,
                     gold_labels=gold_label_from_cv,
                     pred_labels=predictions_from_cv
                 )

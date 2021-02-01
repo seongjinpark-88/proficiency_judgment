@@ -160,9 +160,10 @@ class AcousticRNN(nn.Module):
     def __init__(self, params):
         super(AcousticRNN, self).__init__()
 
-        self.audio_dim = params.audio_dim
+        self.audio_dim = params.acoustic_dim
         self.hidden_dim = params.acoustic_gru_hidden_dim
         self.num_layers = params.num_gru_layers
+        self.dropout = params.dropout
 
         self.GRULayer = nn.GRU(
             input_size=params.audio_dim,
@@ -173,26 +174,25 @@ class AcousticRNN(nn.Module):
         )
 
         self.linear = nn.Linear(params.acoustic_gru_hidden_dim, params.fc_hidden_dim)
-        self.fc_1 = nn.Linear(params.fc_hidden_dim, 256)
-        self.fc_2 = nn.Linear(256, 1)
+        self.fc_1 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+        self.fc_2 = nn.Linear(params.fc_hidden_dim, 1)
 
     def forward(self, input_features, input_length):
-        input_features = input_features.squeeze(2)
-        input_features = input_features.transpose(1, 2)
+        # input_features = input_features.squeeze(2)
+        # input_features = input_features.transpose(1, 2)
         # print(input_features.size())
         packed_feats = nn.utils.rnn.pack_padded_sequence(
             input_features, input_length, batch_first=True, enforce_sorted=False
         )
 
         outputs, hidden = self.GRULayer(packed_feats)
-        encoded = F.dropout(torch.tanh(hidden[-1]), 0.3)
-        intermediate = F.dropout(torch.tanh(self.linear(encoded)), 0.3)
+        encoded = F.dropout(torch.tanh(self.linear(hidden[-1])), self.dropout)
+        intermediate = F.dropout(torch.tanh(self.fc_1(encoded)), self.dropout)
 
-        self.prediction = self.fc_2(F.dropout(torch.tanh(self.fc_1(intermediate)), 0.2))
+        self.prediction = self.fc_2(intermediate)
 
 
         return self.prediction
-
 
 class MultiAcousticModelEarlyMTL(nn.Module):
     def __init__(self, params):
@@ -282,6 +282,89 @@ class MultiAcousticModelEarlyMTL(nn.Module):
 
         return acc_output, flu_output, comp_output
 
+class AudioRNN(nn.Module):
+    
+    def __init__(self, params):
+        super(AudioRNN, self).__init__()
+
+        self.audio_dim = params.audio_dim
+        self.hidden_dim = params.acoustic_gru_hidden_dim
+        self.num_layers = params.num_gru_layers
+        self.dropout = params.dropout
+
+        self.GRULayer = nn.GRU(
+            input_size=params.audio_dim,
+            hidden_size=params.acoustic_gru_hidden_dim,
+            num_layers=params.num_gru_layers,
+            batch_first=True,
+            bidirectional=False
+        )
+
+        self.linear = nn.Linear(params.acoustic_gru_hidden_dim, params.fc_hidden_dim)
+        self.fc_1 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+        self.fc_2 = nn.Linear(params.fc_hidden_dim, 1)
+
+    def forward(self, input_features, input_length):
+        # input_features = input_features.squeeze(2)
+        # input_features = input_features.transpose(1, 2)
+        # print(input_features.size())
+        packed_feats = nn.utils.rnn.pack_padded_sequence(
+            input_features, input_length, batch_first=True, enforce_sorted=False
+        )
+
+        outputs, hidden = self.GRULayer(packed_feats)
+        encoded = F.dropout(torch.tanh(self.linear(hidden[-1])), self.dropout)
+        intermediate = F.dropout(torch.tanh(self.fc_1(encoded)), self.dropout)
+
+        self.prediction = self.fc_2(intermediate)
+
+
+        return self.prediction
+
+class AudioRNNmtl(nn.Module):
+    
+    def __init__(self, params):
+        super(AudioRNNmtl, self).__init__()
+        self.audio_dim = params.audio_dim
+        self.hidden_dim = params.acoustic_gru_hidden_dim
+        self.dropout = params.dropout
+        self.num_layers = params.num_gru_layers
+
+        self.GRULayer = nn.GRU(
+            input_size=params.audio_dim,
+            hidden_size=params.acoustic_gru_hidden_dim,
+            num_layers=params.num_gru_layers,
+            batch_first=True,
+            bidirectional=False
+        )
+
+        self.linear1 = nn.Linear(params.acoustic_gru_hidden_dim, params.fc_hidden_dim)
+        self.linear2 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+        
+        self.fc_acc = nn.Linear(params.fc_hidden_dim, 1)
+
+        self.fc_flu = nn.Linear(params.fc_hidden_dim, 1)
+
+        self.fc_com = nn.Linear(params.fc_hidden_dim, 1)
+
+    def forward(self, input_features, input_length):
+        input_feat = input_features
+        input_len = input_length
+        packed = nn.utils.rnn.pack_padded_sequence(
+            input_feat, input_len, batch_first=True, enforce_sorted=False
+        )
+
+        outputs, hidden = self.GRULayer(packed)
+
+        encoded = F.dropout(hidden[-1], self.dropout)
+        shared_layer = F.dropout(torch.tanh(self.linear1(encoded)), self.dropout)
+        shared_layer = F.dropout(torch.tanh(self.linear2(shared_layer)), self.dropout)
+
+        self.acc_out = self.fc_acc(shared_layer)
+        self.flu_out = self.fc_flu(shared_layer)
+        self.com_out = self.fc_com(shared_layer)
+
+        return [self.acc_out, self.flu_out, self.com_out]
 
 class SimpleFFN(nn.Module):
 
@@ -293,9 +376,7 @@ class SimpleFFN(nn.Module):
         self.fc_1 = nn.Linear(params.fc_hidden_dim_phon, params.fc_hidden_dim_phon)
         self.fc_2 = nn.Linear(params.fc_hidden_dim_phon, params.fc_hidden_dim_phon)
         self.fc_3 = nn.Linear(params.fc_hidden_dim_phon, params.fc_hidden_dim_phon)
-        # self.fc_4 = nn.Linear(params.fc_hidden_dim_phon, 1)
         self.fc_4 = nn.Linear(params.fc_hidden_dim_phon, 1)
-        # self.fc_5 = nn.Linear(params.fc_hidden_dim_phon, 1)
 
     def forward(self, input_features):
         # print(input_features.size())
@@ -363,17 +444,17 @@ class AcousticFFN(nn.Module):
         self.dropout = params.dropout
         self.linear = nn.Linear(params.acoustic_dim, params.fc_hidden_dim_acoustic)
         self.fc_1 = nn.Linear(params.fc_hidden_dim_acoustic, params.fc_hidden_dim_acoustic)
-        self.fc_2 = nn.Linear(params.fc_hidden_dim_acoustic, 64)
-        self.fc_3 = nn.Linear(64, 1)
+        # self.fc_2 = nn.Linear(params.fc_hidden_dim_acoustic, 1)
+        self.fc_2 = nn.Linear(params.fc_hidden_dim_acoustic, params.fc_hidden_dim_acoustic)
+        self.fc_3 = nn.Linear(params.fc_hidden_dim_acoustic, params.fc_hidden_dim_acoustic)
+        self.fc_4 = nn.Linear(params.fc_hidden_dim_acoustic, 1)
 
     def forward(self, input_features):
-        # print(input_features.size())
-        # input_features = torch.mean(input_features, dim=1)
-        # print(input_features.size())
         encoded = F.dropout(torch.tanh(self.linear(input_features)), self.dropout)
         fcn1 = F.dropout(torch.tanh(self.fc_1(encoded)), self.dropout)
         fcn2 = F.dropout(torch.tanh(self.fc_2(fcn1)), self.dropout)
-        self.prediction = self.fc_3(fcn2)
+        fcn3 = F.dropout(torch.tanh(self.fc_2(fcn2)), self.dropout)
+        self.prediction = self.fc_4(fcn3)
 
         return self.prediction
 
@@ -650,6 +731,7 @@ class MultiInput_single_cv(nn.Module):
     def __init__(self, device, feats, params):
         super(MultiInput_single_cv, self).__init__()
         # input dimensions
+        self.dropout = params.dropout
 
         if feats == "AudioAcoustic":
             self.audio_dim = params.audio_dim
@@ -690,6 +772,8 @@ class MultiInput_single_cv(nn.Module):
             self.Linear = nn.Linear(params.phono_dim, params.fc_hidden_dim)
             self.PhonLinear1 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
             self.PhonLinear2 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+            self.PhonLinear3 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+            self.PhonLinear4 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
 
             input_size = [params.fc_hidden_dim, params.fc_hidden_dim]
 
@@ -701,10 +785,14 @@ class MultiInput_single_cv(nn.Module):
             self.AcousticInput = nn.Linear(params.acoustic_dim, params.fc_hidden_dim)
             self.AcousticLinear1 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
             self.AcousticLinear2 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+            self.AcousticLinear3 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+            self.AcousticLinear4 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
 
             self.Linear = nn.Linear(params.phono_dim, params.fc_hidden_dim)
             self.PhonLinear1 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
             self.PhonLinear2 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+            self.PhonLinear3 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+            self.PhonLinear4 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
 
             input_size = [params.fc_hidden_dim, params.fc_hidden_dim]
 
@@ -737,10 +825,12 @@ class MultiInput_single_cv(nn.Module):
         self.multiinputnet = MultiInputNet(device=device, input_size_list=input_size, params=params)
 
         self.input_dimension = sum(input_size)
+        # self.input_dimension = params.embracement_size
 
         self.fc1 = nn.Linear(self.input_dimension, params.fc_hidden_dim)
-        self.fc2 = nn.Linear(params.fc_hidden_dim, 64)
-        self.fc3 = nn.Linear(64, 1)
+        self.fc2 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+        self.fc3 = nn.Linear(params.fc_hidden_dim, 1)
+        # self.fc3 = nn.Linear(64, 1)
 
     def forward(self,
                 feats,
@@ -783,36 +873,46 @@ class MultiInput_single_cv(nn.Module):
 
             audio_outputs, audio_hidden = self.AudioGRULayer(audio_packed_feats)
 
-            audio_encoded = F.dropout(audio_hidden[-1], 0.2)
-            audio_layer_inter = F.dropout(torch.tanh(self.AudioLinear1(audio_encoded)), 0.2)
-            audio_layer = F.dropout(torch.tanh(self.AudioLinear2(audio_layer_inter)), 0.2)
+            audio_encoded = F.dropout(audio_hidden[-1], self.dropout)
+            audio_layer_inter = F.dropout(torch.tanh(self.AudioLinear1(audio_encoded)), self.dropout)
+            audio_layer = F.dropout(torch.tanh(self.AudioLinear2(audio_layer_inter)), self.dropout)
 
-            phon_encoded = F.dropout(torch.tanh(self.Linear(phon_feats)), 0.2)
-            phon_layer_inter = F.dropout(torch.tanh(self.PhonLinear1(phon_encoded)), 0.2)
-            phon_layer = F.dropout(torch.tanh(self.PhonLinear2(phon_layer_inter)), 0.2)
+            phon_encoded = F.dropout(torch.tanh(self.Linear(phon_feats)), self.dropout)
+            phon_layer_inter = F.dropout(torch.tanh(self.PhonLinear1(phon_encoded)), self.dropout)
+            phon_layer = F.dropout(torch.tanh(self.PhonLinear2(phon_layer_inter)), self.dropout)
+            phon_layer = F.dropout(torch.tanh(self.PhonLinear3(phon_layer)), self.dropout)
+            phon_layer = F.dropout(torch.tanh(self.PhonLinear4(phon_layer)), self.dropout)
 
             multiinputnet_output = self.multiinputnet([audio_layer, phon_layer])
 
-            output1 = F.dropout(torch.relu(self.fc1(multiinputnet_output)), 0.2)
-            output2 = F.dropout(torch.relu(self.fc2(output1)), 0.2)
+            output1 = F.dropout(torch.tanh(self.fc1(multiinputnet_output)), self.dropout)
+            output2 = F.dropout(torch.tanh(self.fc2(output1)), self.dropout)
             output = self.fc3(output2)
 
         elif feats == "AcousticPhon":
-            acoustic_feats = input_features[0].squeeze(1)
+            acoustic_feats = input_features[0] # .squeeze(1)
+            acoustic_feats = acoustic_feats.transpose(1, 2)
+            # print(acoustic_feats.size())
+            acoustic_feats = torch.mean(acoustic_feats, dim=1)
+            # print(acoustic_feats.size())
             phon_feats = input_features[1]
 
-            acoustic_encoded = F.dropout(torch.tanh(self.AcousticInput(acoustic_feats)), 0.2)
-            acoustic_layer_inter = F.dropout(torch.tanh(self.AcousticLinear1(acoustic_encoded)), 0.2)
-            acoustic_layer = F.dropout(torch.tanh(self.AcousticLinear2(acoustic_layer_inter)), 0.2)
+            acoustic_encoded = F.dropout(torch.tanh(self.AcousticInput(acoustic_feats)), self.dropout)
+            acoustic_layer_inter = F.dropout(torch.tanh(self.AcousticLinear1(acoustic_encoded)), self.dropout)
+            acoustic_layer = F.dropout(torch.tanh(self.AcousticLinear2(acoustic_layer_inter)), self.dropout)
+            acoustic_layer = F.dropout(torch.tanh(self.AcousticLinear3(acoustic_layer)), self.dropout)
+            acoustic_layer = F.dropout(torch.tanh(self.AcousticLinear4(acoustic_layer)), self.dropout)
 
-            phon_encoded = F.dropout(torch.tanh(self.Linear(phon_feats)), 0.2)
-            phon_layer_inter = F.dropout(torch.tanh(self.PhonLinear1(phon_encoded)), 0.2)
-            phon_layer = F.dropout(torch.tanh(self.PhonLinear2(phon_layer_inter)), 0.2)
+            phon_encoded = F.dropout(torch.tanh(self.Linear(phon_feats)), self.dropout)
+            phon_layer_inter = F.dropout(torch.tanh(self.PhonLinear1(phon_encoded)), self.dropout)
+            phon_layer = F.dropout(torch.tanh(self.PhonLinear2(phon_layer_inter)), self.dropout)
+            phon_layer = F.dropout(torch.tanh(self.PhonLinear3(phon_layer)), self.dropout)
+            phon_layer = F.dropout(torch.tanh(self.PhonLinear4(phon_layer)), self.dropout)
 
             multiinputnet_output = self.multiinputnet([acoustic_layer, phon_layer])
 
-            output1 = F.dropout(torch.relu(self.fc1(multiinputnet_output)), 0.2)
-            output2 = F.dropout(torch.relu(self.fc2(output1)), 0.2)
+            output1 = F.dropout(torch.relu(self.fc1(multiinputnet_output)), self.dropout)
+            output2 = F.dropout(torch.relu(self.fc2(output1)), self.dropout)
             output = self.fc3(output2)
 
         elif feats == "All":
@@ -846,3 +946,221 @@ class MultiInput_single_cv(nn.Module):
             output = self.fc3(output2)
 
         return output
+
+class MultiInput_multi_cv(nn.Module):
+    def __init__(self, device, feats, params):
+        super(MultiInput_multi_cv, self).__init__()
+        # input dimensions
+        self.dropout = params.dropout
+
+        if feats == "AudioAcoustic":
+            self.audio_dim = params.audio_dim
+            self.acoustic_dim = params.acoustic_dim
+            self.num_gru_layers = params.num_gru_layers
+
+            self.AudioGRULayer = nn.GRU(
+                input_size=params.audio_dim,
+                hidden_size=params.acoustic_gru_hidden_dim,
+                num_layers=params.num_gru_layers,
+                batch_first=True,
+                bidirectional=False
+            )
+            self.AudioLinear1 = nn.Linear(params.acoustic_gru_hidden_dim, params.fc_hidden_dim)
+            self.AudioLinear2 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+
+            self.AcousticInput = nn.Linear(params.acoustic_dim, params.fc_hidden_dim)
+            self.AcousticLinear1 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+            self.AcousticLinear2 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+
+            input_size = [params.fc_hidden_dim, params.fc_hidden_dim]
+
+        elif feats == "AudioPhon":
+            self.audio_dim = params.audio_dim
+            self.phono_dim = params.phono_dim
+            self.num_gru_layers = params.num_gru_layers
+
+            self.AudioGRULayer = nn.GRU(
+                input_size=params.audio_dim,
+                hidden_size=params.acoustic_gru_hidden_dim,
+                num_layers=params.num_gru_layers,
+                batch_first=True,
+                bidirectional=False
+            )
+            self.AudioLinear1 = nn.Linear(params.acoustic_gru_hidden_dim, params.fc_hidden_dim)
+            self.AudioLinear2 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+
+            self.Linear = nn.Linear(params.phono_dim, params.fc_hidden_dim)
+            self.PhonLinear1 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+            self.PhonLinear2 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+
+            input_size = [params.fc_hidden_dim, params.fc_hidden_dim]
+
+        elif feats == "AcousticPhon":
+            self.acoustic_dim = params.acoustic_dim
+            self.phono_dim = params.phono_dim
+            self.num_gru_layers = params.num_gru_layers
+
+            self.AcousticInput = nn.Linear(params.acoustic_dim, params.fc_hidden_dim)
+            self.AcousticLinear1 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+            self.AcousticLinear2 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+            self.AcousticLinear3 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+            self.AcousticLinear4 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+
+            self.Linear = nn.Linear(params.phono_dim, params.fc_hidden_dim)
+            self.PhonLinear1 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+            self.PhonLinear2 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+            self.PhonLinear3 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+            self.PhonLinear4 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+
+            input_size = [params.fc_hidden_dim, params.fc_hidden_dim]
+
+        elif feats == "All":
+            self.audio_dim = params.audio_dim
+            self.acoustic_dim = params.acoustic_dim
+            self.phono_dim = params.phono_dim
+
+            self.AudioGRULayer = nn.GRU(
+                input_size=params.audio_dim,
+                hidden_size=params.acoustic_gru_hidden_dim,
+                num_layers=params.num_gru_layers,
+                batch_first=True,
+                bidirectional=False
+            )
+
+            self.AudioLinear1 = nn.Linear(params.acoustic_gru_hidden_dim, params.fc_hidden_dim)
+            self.AudioLinear2 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+
+            self.AcousticInput = nn.Linear(params.acoustic_dim, params.fc_hidden_dim)
+            self.AcousticLinear1 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+            self.AcousticLinear2 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+
+            self.Linear = nn.Linear(params.phono_dim, params.fc_hidden_dim)
+            self.PhonLinear1 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+            self.PhonLinear2 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+
+            input_size = [params.fc_hidden_dim, params.fc_hidden_dim, params.fc_hidden_dim]
+
+        self.multiinputnet = MultiInputNet(device=device, input_size_list=input_size, params=params)
+
+        self.input_dimension = sum(input_size)
+        # self.input_dimension = params.embracement_size
+
+        self.fc_acc1 = nn.Linear(self.input_dimension, params.fc_hidden_dim)
+        self.fc_acc2 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+
+        self.fc_flu1 = nn.Linear(self.input_dimension, params.fc_hidden_dim)
+        self.fc_flu2 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+
+        self.fc_comp1 = nn.Linear(self.input_dimension, params.fc_hidden_dim)
+        self.fc_comp2 = nn.Linear(params.fc_hidden_dim, params.fc_hidden_dim)
+                
+        self.fc_acc = nn.Linear(params.fc_hidden_dim, 1)
+        self.fc_flu = nn.Linear(params.fc_hidden_dim, 1)
+        self.fc_comp = nn.Linear(params.fc_hidden_dim, 1)
+        # self.fc3 = nn.Linear(64, 1)
+
+    def forward(self,
+                feats,
+                input_features,
+                input_lengths):
+
+        if feats == "AudioAcoustic":
+            audio_feats = input_features[0]
+            audio_length = input_lengths
+            acoustic_feats = input_features[1].squeeze(1)
+
+
+            audio_packed_feats = nn.utils.rnn.pack_padded_sequence(
+                audio_feats, audio_length, batch_first=True, enforce_sorted=False
+            )
+
+            audio_outputs, audio_hidden = self.AudioGRULayer(audio_packed_feats)
+            audio_encoded = F.dropout(audio_hidden[-1], 0.2)
+            audio_layer_inter = F.dropout(torch.tanh(self.AudioLinear1(audio_encoded)), 0.2)
+            audio_layer = F.dropout(torch.tanh(self.AudioLinear2(audio_layer_inter)), 0.2)
+
+            acoustic_encoded = F.dropout(torch.tanh(self.AcousticInput(acoustic_feats)), 0.2)
+            acoustic_layer_inter = F.dropout(torch.tanh(self.AcousticLinear1(acoustic_encoded)), 0.2)
+            acoustic_layer = F.dropout(torch.tanh(self.AcousticLinear2(acoustic_layer_inter)), 0.2)
+
+            multiinputnet_output = self.multiinputnet([audio_layer, acoustic_layer])
+
+        elif feats == "AudioPhon":
+            audio_feats = input_features[0]
+            audio_length = input_lengths
+            phon_feats = input_features[1]
+
+            audio_packed_feats = nn.utils.rnn.pack_padded_sequence(
+                audio_feats, audio_length, batch_first=True, enforce_sorted=False
+            )
+
+            audio_outputs, audio_hidden = self.AudioGRULayer(audio_packed_feats)
+
+            audio_encoded = F.dropout(audio_hidden[-1], 0.2)
+            audio_layer_inter = F.dropout(torch.tanh(self.AudioLinear1(audio_encoded)), 0.2)
+            audio_layer = F.dropout(torch.tanh(self.AudioLinear2(audio_layer_inter)), 0.2)
+
+            phon_encoded = F.dropout(torch.tanh(self.Linear(phon_feats)), 0.2)
+            phon_layer_inter = F.dropout(torch.tanh(self.PhonLinear1(phon_encoded)), 0.2)
+            phon_layer = F.dropout(torch.tanh(self.PhonLinear2(phon_layer_inter)), 0.2)
+
+            multiinputnet_output = self.multiinputnet([audio_layer, phon_layer])
+
+        elif feats == "AcousticPhon":
+            acoustic_feats = input_features[0] # .squeeze(1)
+            acoustic_feats = torch.mean(acoustic_feats, dim=1)
+            phon_feats = input_features[1]
+
+            acoustic_encoded = F.dropout(torch.tanh(self.AcousticInput(acoustic_feats)), self.dropout)
+            acoustic_layer_inter = F.dropout(torch.tanh(self.AcousticLinear1(acoustic_encoded)), self.dropout)
+            acoustic_layer = F.dropout(torch.tanh(self.AcousticLinear2(acoustic_layer_inter)), self.dropout)
+            acoustic_layer = F.dropout(torch.tanh(self.AcousticLinear3(acoustic_layer_inter)), self.dropout)
+            acoustic_layer = F.dropout(torch.tanh(self.AcousticLinear4(acoustic_layer_inter)), self.dropout)
+
+            phon_encoded = F.dropout(torch.tanh(self.Linear(phon_feats)), self.dropout)
+            phon_layer_inter = F.dropout(torch.tanh(self.PhonLinear1(phon_encoded)), self.dropout)
+            phon_layer = F.dropout(torch.tanh(self.PhonLinear2(phon_layer_inter)), self.dropout)
+            phon_layer = F.dropout(torch.tanh(self.PhonLinear3(phon_layer_inter)), self.dropout)
+            phon_layer = F.dropout(torch.tanh(self.PhonLinear4(phon_layer_inter)), self.dropout)
+
+            multiinputnet_output = self.multiinputnet([acoustic_layer, phon_layer])
+
+        elif feats == "All":
+            audio_feats = input_features[0]
+            audio_length = input_lengths
+            acoustic_feats = input_features[1].squeeze(1)
+            phon_feats = input_features[2]
+
+            audio_packed_feats = nn.utils.rnn.pack_padded_sequence(
+                audio_feats, audio_length, batch_first=True, enforce_sorted=False
+            )
+
+            audio_outputs, audio_hidden = self.AudioGRULayer(audio_packed_feats)
+
+            audio_encoded = F.dropout(audio_hidden[-1], self.dropout)
+            audio_layer_inter = F.dropout(torch.tanh(self.AudioLinear1(audio_encoded)), self.dropout)
+            audio_layer = F.dropout(torch.tanh(self.AudioLinear2(audio_layer_inter)), self.dropout)
+
+            acoustic_encoded = F.dropout(torch.tanh(self.AcousticInput(acoustic_feats)), self.dropout)
+            acoustic_layer_inter = F.dropout(torch.tanh(self.AcousticLinear1(acoustic_encoded)), self.dropout)
+            acoustic_layer = F.dropout(torch.tanh(self.AcousticLinear1(acoustic_layer_inter)), self.dropout)
+
+            phon_encoded = F.dropout(torch.tanh(self.Linear(phon_feats)), self.dropout)
+            phon_layer_inter = F.dropout(torch.tanh(self.PhonLinear1(phon_encoded)), self.dropout)
+            phon_layer = F.dropout(torch.tanh(self.PhonLinear2(phon_layer_inter)), self.dropout)
+
+            multiinputnet_output = self.multiinputnet([audio_layer, acoustic_layer, phon_layer])
+
+        acc1 = F.dropout(torch.tanh(self.fc_acc1(multiinputnet_output)), self.dropout)
+        acc2 = F.dropout(torch.tanh(self.fc_acc2(acc1)), self.dropout)
+        acc_out = self.fc_acc(acc2)
+
+        flu1 = F.dropout(torch.tanh(self.fc_flu1(multiinputnet_output)), self.dropout)
+        flu2 = F.dropout(torch.tanh(self.fc_flu2(flu1)), self.dropout)
+        flu_out = self.fc_flu(flu2)
+
+        comp1 = F.dropout(torch.tanh(self.fc_comp1(multiinputnet_output)), self.dropout)
+        comp2 = F.dropout(torch.tanh(self.fc_comp2(comp1)), self.dropout)
+        comp_out = self.fc_comp(comp2)
+
+        return [acc_out, flu_out, comp_out]

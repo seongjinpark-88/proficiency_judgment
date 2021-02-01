@@ -18,15 +18,12 @@ from sklearn.metrics import r2_score, mean_squared_error
 
 def calc_r_squared(valy, y_preds):
     mean_y = mean(valy)
-    ss_res = mean_squared_error(valy, y_preds)
-    ss_tot = np.var(valy, ddof=1)
-    # ss_res = []
-    # ss_tot = []
-    # for i, item in enumerate(valy):
-    #     ss_res.append((item - y_preds[i]) ** 2)
-    #     ss_tot.append((item - mean_y) ** 2)
-    # r_value = 1 - (sum(ss_res) / (sum(ss_tot) + 0.0000001))
-    r_value = 1 - (ss_res / (ss_tot + 1e-6))
+    ss_res = []
+    ss_tot = []
+    for i, item in enumerate(valy):
+        ss_res.append((item - y_preds[i]) ** 2)
+        ss_tot.append((item - mean_y) ** 2)
+    r_value = 1 - (sum(ss_res) / (sum(ss_tot) + 0.0000001))
     return float(r_value)
 
 
@@ -760,8 +757,6 @@ def train_and_predict_single_cv(
 
     for epoch_index in range(num_epochs):
 
-        print("Now starting epoch {0}".format(epoch_index))
-
         train_state["epoch_index"] = epoch_index
 
         # set classifier(s) to training mode
@@ -842,11 +837,12 @@ def train_and_predict_single_cv(
             # print(f"y-gold shape is: {y_gold.shape}")
             # print(y_pred)/
             # print(f"y-pred shape is: {y_pred.shape}")
-            loss_t = loss_func(y_pred, y_gold)
+            loss = loss_func(y_pred, y_gold)
+            loss_t = loss.item()
             running_loss += (loss_t - running_loss) / (batch_index + 1)
             # loss = torch.sqrt(loss + eps)
             # step 4. use loss to produce gradients
-            loss_t.backward()
+            loss.backward()
 
             # step 5. use optimizer to take gradient step
             optimizer.step()
@@ -861,8 +857,15 @@ def train_and_predict_single_cv(
         train_state["train_loss"].append(epoch_loss)
         train_state["train_r2"].append(epoch_r2)
 
-        print("Epoch {0}\tTrain R2: {1}\tTrain Loss: {2}".format(epoch_index, epoch_r2, epoch_loss))
-        # print("Training r2: " + str(epoch_r2))
+        if ((epoch_index + 1) % 50) == 0:
+            print("Now starting epoch {0}".format(epoch_index))
+            print("Epoch {0}\tTrain R2: {1}\tTrain Loss: {2}".format(epoch_index, epoch_r2, epoch_loss))
+            epoch_stt = 0
+            mean_y = mean(ys_holder)
+            for y in ys_holder:
+                epoch_stt = (y - mean_y) ** 2
+            print("TRAIN MSE: {0}\tTRAIN STT: {1}".format(epoch_loss, epoch_stt))
+            # print("Training r2: " + str(epoch_r2))
 
         # Iterate over validation set--put it in a dataloader
         val_batches = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
@@ -936,7 +939,8 @@ def train_and_predict_single_cv(
             preds_holder.extend(y_pred.tolist())
             ys_holder.extend(y_gold.tolist())
 
-            loss_t = loss_func(y_pred, y_gold)
+            loss = loss_func(y_pred, y_gold)
+            loss_t = loss.item()
             running_loss += (loss_t - running_loss) / (batch_index + 1)
 
             # step 3. compute the loss
@@ -957,7 +961,15 @@ def train_and_predict_single_cv(
         # epoch_val_loss = mean_squared_error(preds_holder, ys_holder)
         epoch_val_loss = running_loss
         train_state["val_r2"].append(epoch_val_r2)
-        print("Epoch {0}\tDev R2: {1}\tDev Loss: {2}".format(epoch_index, epoch_val_r2, epoch_val_loss))
+
+        if ((epoch_index + 1) % 50) == 0:
+            print("Epoch {0}\tDev R2: {1}\tDev Loss: {2}".format(epoch_index, epoch_val_r2, epoch_val_loss))
+            epoch_stt = 0
+            mean_y = mean(ys_holder)
+            for y in ys_holder:
+                epoch_stt = (y - mean_y) ** 2
+
+            print("DEV MSE: {0}\tDEV STT: {1}".format(epoch_val_loss, epoch_stt))
         # print("dev r2: " + str(epoch_val_r2))
 
         # add loss and accuracy to train state
@@ -1002,6 +1014,7 @@ def train_and_predict_embrace_single_cv(
         train_state["epoch_index"] = epoch_index
 
         # set classifier(s) to training mode
+        running_loss = 0.
         classifier.train()
 
         batches = DataLoader(
@@ -1047,9 +1060,9 @@ def train_and_predict_embrace_single_cv(
                 )
 
             elif feats == "AudioPhon":
-                audio_batch_feat = batch["acoustic"].clone().detach().to(device)
+                audio_batch_feat = batch["audio"].clone().detach().to(device)
                 audio_batch_feat = audio_batch_feat.transpose(1, 2)
-                audio_batch_length = batch['acoustic_length'].clone().detach()
+                audio_batch_length = batch['length'].clone().detach()
 
                 rhythm_batch_feat = batch['rhythm'].clone().detach().to(device)
 
@@ -1109,11 +1122,16 @@ def train_and_predict_embrace_single_cv(
             # step 4. use loss to produce gradients
             loss.backward()
 
+            loss_t = loss.item()
+            running_loss += (loss_t - running_loss) / (batch_index + 1)
+
+
             # step 5. use optimizer to take gradient step
             optimizer.step()
 
         # add loss and accuracy information to the train state
-        epoch_loss = mean_squared_error(ys_holder, preds_holder)
+        # epoch_loss = mean_squared_error(ys_holder, preds_holder)
+        epoch_loss = running_loss
         # epoch_r2 = r2_score(ys_holder, preds_holder)
         epoch_r2 = calc_r_squared(ys_holder, preds_holder)
         train_state["train_loss"].append(epoch_loss)
@@ -1126,6 +1144,7 @@ def train_and_predict_embrace_single_cv(
         val_batches = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
 
         # set classifier to evaluation mode
+        running_loss = 0.0
         classifier.eval()
 
         # set holders to use for error analysis
@@ -1164,9 +1183,9 @@ def train_and_predict_embrace_single_cv(
                 )
 
             elif feats == "AudioPhon":
-                audio_batch_feat = batch["acoustic"].clone().detach().to(device)
+                audio_batch_feat = batch["audio"].clone().detach().to(device)
                 audio_batch_feat = audio_batch_feat.transpose(1, 2)
-                audio_batch_length = batch['acoustic_length'].clone().detach()
+                audio_batch_length = batch['length'].clone().detach()
 
                 rhythm_batch_feat = batch['rhythm'].clone().detach().to(device)
 
@@ -1187,6 +1206,7 @@ def train_and_predict_embrace_single_cv(
                     input_features=[acoustic_batch_feat, rhythm_batch_feat],
                     input_lengths=acoustic_batch_length
                 )
+                
             elif feats == "All":
                 audio_batch_feat = batch['audio'].clone().detach().to(device)
                 audio_batch_feat = audio_batch_feat.transpose(1, 2)
@@ -1219,8 +1239,14 @@ def train_and_predict_embrace_single_cv(
             # print(y_gold)
 
             # add ys to holder for error analysis
+            y_pred = y_pred.squeeze(1).to(device)
             preds_holder.extend(y_pred.tolist())
             ys_holder.extend(y_gold.tolist())
+
+            loss = loss_func(y_pred, y_gold)
+            loss_t = loss.item()
+            running_loss += (loss_t - running_loss) / (batch_index + 1)
+
 
             # step 3. compute the loss
             # print(y_pred)
@@ -1236,7 +1262,8 @@ def train_and_predict_embrace_single_cv(
         # print("Overall val loss: {0}, overall val acc: {1}".format(running_loss, running_acc))
         # epoch_val_r2 = r2_score(ys_holder, preds_holder)
         epoch_val_r2 = r2_score(ys_holder, preds_holder)
-        epoch_val_loss = mean_squared_error(ys_holder, preds_holder)
+        # epoch_val_loss = mean_squared_error(ys_holder, preds_holder)
+        epoch_val_loss = running_loss
         train_state["val_r2"].append(epoch_val_r2)
         print("Epoch {0}\tDev R2: {1}\tDev Loss: {2}".format(epoch_index, epoch_val_r2, epoch_val_loss))
         # print("dev r2: " + str(epoch_val_r2))
@@ -1365,10 +1392,11 @@ def train_and_predict_single_multi_cv(
             loss1 = loss_func(y_pred_acc, y_gold_acc)
             loss2 = loss_func(y_pred_flu, y_gold_flu)
             loss3 = loss_func(y_pred_comp, y_gold_comp)
-            loss_t = (loss1 + loss2 + loss3) / 3
+            loss = (loss1 + loss2 + loss3) / 3
 
             # step 4. use loss to produce gradients
-            loss_t.backward()
+            loss.backward()
+            loss_t = loss.item()
 
             running_loss += (loss_t - running_loss) / (batch_index + 1)
 
@@ -1473,7 +1501,9 @@ def train_and_predict_single_multi_cv(
             loss1 = loss_func(y_pred_acc, y_gold_acc)
             loss2 = loss_func(y_pred_flu, y_gold_flu)
             loss3 = loss_func(y_pred_comp, y_gold_comp)
-            loss_t = (loss1 + loss2 + loss3) / 3
+            loss = (loss1 + loss2 + loss3) / 3
+
+            loss_t = loss.item()
 
             running_loss += (loss_t - running_loss) / (batch_index + 1)
 
@@ -1493,6 +1523,324 @@ def train_and_predict_single_multi_cv(
 
         train_state["val_r2"].append(epoch_val_r2)
         print("Epoch {0}\tDev R2: {1}\tDev Loss: {2}".format(epoch_index, epoch_val_r2, epoch_val_loss))
+        # add loss and accuracy to train state
+        # train_state["val_loss"].append(epoch_val_loss)
+        train_state["val_loss"].append(running_loss)
+
+        # update the train state now that our epoch is complete
+        train_state = update_train_state(model=classifier, train_state=train_state)
+
+        # update scheduler if there is one
+        if scheduler is not None:
+            scheduler.step(train_state["val_loss"][-1])
+
+        # if it's time to stop, end the training process
+        if train_state["stop_early"]:
+            break
+
+def train_and_predict_embrace_multi_cv(
+        classifier,
+        train_state,
+        feats,
+        rating,
+        cv_idx,
+        train_ds,
+        val_ds,
+        batch_size,
+        num_epochs,
+        loss_func,
+        optimizer,
+        device,
+        rnn,
+        model_type,
+        lr,
+        scheduler=None,
+        sampler=None,
+):
+    model_name = "{0}_{1}_lr{2}".format(rating, model_type, lr)
+
+    for epoch_index in range(num_epochs):
+
+        print("Now starting epoch {0}".format(epoch_index))
+
+        train_state["epoch_index"] = epoch_index
+
+        # set classifier(s) to training mode
+        running_loss = 0
+        classifier.train()
+
+        batches = DataLoader(
+            train_ds, batch_size=batch_size, shuffle=True, sampler=sampler
+        )
+
+        # set holders to use for error analysis
+        ys_acc_holder = []
+        preds_acc_holder = []
+        ys_flu_holder = []
+        preds_flu_holder = []
+        ys_comp_holder = []
+        preds_comp_holder = []
+
+        # for each batch in the list of batches created by the dataloader
+        for batch_index, batch in enumerate(batches):
+            # reset the gradients
+            optimizer.zero_grad()
+
+            
+            y_gold_acc = batch["acc"].clone().detach().to(torch.float).to(device)  
+            y_gold_flu = batch["flu"].clone().detach().to(torch.float).to(device)
+            y_gold_comp = batch["comp"].clone().detach().to(torch.float).to(device)
+            
+            # print(y_gold.size(), y_gold)
+            # y_gold = y_gold.squeeze(1).to(torch.float)
+
+            # step 2. select input and compute output
+
+            if feats == "AudioAcoustic":
+                audio_batch_feat = batch['audio'].clone().detach().to(device)
+                audio_batch_feat = audio_batch_feat.transpose(1, 2)
+
+                audio_batch_length = batch['length'].clone().detach()
+
+                acoustic_batch_feat = batch["acoustic"].clone().detach().to(device)
+                # acoustic_batch_length = batch['acoustic_length'].clone().detach()
+
+                y_pred_acc, y_pred_flu, y_pred_comp = classifier(
+                    feats=feats,
+                    input_features=[audio_batch_feat, acoustic_batch_feat],
+                    input_lengths=audio_batch_length
+                )
+
+            elif feats == "AudioPhon":
+                audio_batch_feat = batch["acoustic"].clone().detach().to(device)
+                audio_batch_feat = audio_batch_feat.transpose(1, 2)
+                audio_batch_length = batch['acoustic_length'].clone().detach()
+
+                rhythm_batch_feat = batch['rhythm'].clone().detach().to(device)
+
+                y_pred_acc, y_pred_flu, y_pred_comp = classifier(
+                    feats=feats,
+                    input_features=[audio_batch_feat, rhythm_batch_feat],
+                    input_lengths=audio_batch_length
+                )
+
+            elif feats == "AcousticPhon":
+                acoustic_batch_feat = batch["acoustic"].clone().detach().to(device)
+                acoustic_batch_length = batch['acoustic_length'].clone().detach()
+
+                rhythm_batch_feat = batch['rhythm'].clone().detach().to(device)
+
+                y_pred_acc, y_pred_flu, y_pred_comp = classifier(
+                    feats=feats,
+                    input_features=[acoustic_batch_feat, rhythm_batch_feat],
+                    input_lengths=acoustic_batch_length
+                )
+            elif feats == "All":
+                audio_batch_feat = batch['audio'].clone().detach().to(device)
+                audio_batch_feat = audio_batch_feat.transpose(1, 2)
+
+                audio_batch_length = batch['length'].clone().detach()
+
+                acoustic_batch_feat = batch["acoustic"].clone().detach().to(device)
+                # acoustic_batch_length = batch['acoustic_length'].clone().detach()
+
+                rhythm_batch_feat = batch['rhythm'].clone().detach().to(device)
+
+                y_pred_acc, y_pred_flu, y_pred_comp = classifier(
+                    feats=feats,
+                    input_features=[audio_batch_feat, acoustic_batch_feat, rhythm_batch_feat],
+                    input_lengths=audio_batch_length
+                )
+
+            else:
+                print("Wrong input feature")
+                exit()
+
+            # For first prediction
+            y_pred_acc = y_pred_acc.squeeze(1).to(device)
+            preds_acc_holder.extend(y_pred_acc.tolist())
+            ys_acc_holder.extend(y_gold_acc.tolist())
+
+            # For second prediction
+            y_pred_flu = y_pred_flu.squeeze(1).to(device)
+            preds_flu_holder.extend(y_pred_flu.tolist())
+            ys_flu_holder.extend(y_gold_flu.tolist())
+
+            # For third prediction
+            y_pred_comp = y_pred_comp.squeeze(1).to(device)
+            preds_comp_holder.extend(y_pred_comp.tolist())
+            ys_comp_holder.extend(y_gold_comp.tolist())
+
+            # step 3. compute the loss
+            # Calculate Loss
+            loss1 = loss_func(y_pred_acc, y_gold_acc)
+            loss2 = loss_func(y_pred_flu, y_gold_flu)
+            loss3 = loss_func(y_pred_comp, y_gold_comp)
+            loss = (loss1 + loss2 + loss3) / 3
+
+            # step 4. use loss to produce gradients
+            loss.backward()
+            loss_t = loss.item()
+
+            running_loss += (loss_t - running_loss) / (batch_index + 1)
+
+            # step 5. use optimizer to take gradient step
+            optimizer.step()
+
+        # add loss and accuracy information to the train state
+
+        if rating == "acc":
+            epoch_loss = mean_squared_error(ys_acc_holder, preds_acc_holder)
+            epoch_r2 = calc_r_squared(ys_acc_holder, preds_acc_holder)
+        elif rating == "flu":
+            epoch_loss = mean_squared_error(ys_flu_holder, preds_flu_holder)
+            epoch_r2 = calc_r_squared(ys_flu_holder, preds_flu_holder)
+        elif rating == "comp":
+            epoch_loss = mean_squared_error(ys_comp_holder, preds_comp_holder)
+            epoch_r2 = calc_r_squared(ys_comp_holder, preds_comp_holder)
+        else:
+            print("Wrong rating!")
+            sys.exit(1)
+
+        train_state["train_loss"].append(epoch_loss)
+        train_state["train_r2"].append(epoch_r2)
+
+        print("Epoch {0}\tTrain R2: {1}\tTrain Loss: {2}".format(epoch_index, epoch_r2, epoch_loss))
+        # print("Training r2: " + str(epoch_r2))
+
+        # Iterate over validation set--put it in a dataloader
+        val_batches = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
+
+        # set classifier to evaluation mode
+        running_loss = 0
+        classifier.eval()
+
+        # set holders to use for error analysis
+        ys_acc_holder = []
+        preds_acc_holder = []
+        ys_flu_holder = []
+        preds_flu_holder = []
+        ys_comp_holder = []
+        preds_comp_holder = []
+
+        # for each batch in the dataloader
+        for batch_index, batch in enumerate(val_batches):
+            y_gold_acc = batch["acc"].clone().detach().to(torch.float).to(device)
+            y_gold_flu = batch["flu"].clone().detach().to(torch.float).to(device)
+            y_gold_comp = batch["comp"].clone().detach().to(torch.float).to(device)
+            
+            # step 2. select input and compute output
+
+            if feats == "AudioAcoustic":
+                audio_batch_feat = batch['audio'].clone().detach().to(device)
+                audio_batch_feat = audio_batch_feat.transpose(1, 2)
+
+                audio_batch_length = batch['length'].clone().detach()
+
+                acoustic_batch_feat = batch["acoustic"].clone().detach().to(device)
+                # acoustic_batch_length = batch['acoustic_length'].clone().detach()
+
+                y_pred_acc, y_pred_flu, y_pred_comp = classifier(
+                    feats=feats,
+                    input_features=[audio_batch_feat, acoustic_batch_feat],
+                    input_lengths=audio_batch_length
+                )
+
+            elif feats == "AudioPhon":
+                audio_batch_feat = batch["acoustic"].clone().detach().to(device)
+                audio_batch_feat = audio_batch_feat.transpose(1, 2)
+                audio_batch_length = batch['acoustic_length'].clone().detach()
+
+                rhythm_batch_feat = batch['rhythm'].clone().detach().to(device)
+
+                y_pred_acc, y_pred_flu, y_pred_comp = classifier(
+                    feats=feats,
+                    input_features=[audio_batch_feat, rhythm_batch_feat],
+                    input_lengths=audio_batch_length
+                )
+
+            elif feats == "AcousticPhon":
+                acoustic_batch_feat = batch["acoustic"].clone().detach().to(device)
+                acoustic_batch_length = batch['acoustic_length'].clone().detach()
+
+                rhythm_batch_feat = batch['rhythm'].clone().detach().to(device)
+
+                y_pred_acc, y_pred_flu, y_pred_comp = classifier(
+                    feats=feats,
+                    input_features=[acoustic_batch_feat, rhythm_batch_feat],
+                    input_lengths=acoustic_batch_length
+                )
+            elif feats == "All":
+                audio_batch_feat = batch['audio'].clone().detach().to(device)
+                audio_batch_feat = audio_batch_feat.transpose(1, 2)
+
+                audio_batch_length = batch['length'].clone().detach()
+
+                acoustic_batch_feat = batch["acoustic"].clone().detach().to(device)
+                # acoustic_batch_length = batch['acoustic_length'].clone().detach()
+
+                rhythm_batch_feat = batch['rhythm'].clone().detach().to(device)
+
+                y_pred_acc, y_pred_flu, y_pred_comp = classifier(
+                    feats=feats,
+                    input_features=[audio_batch_feat, acoustic_batch_feat, rhythm_batch_feat],
+                    input_lengths=audio_batch_length
+                )
+
+            else:
+                print("Wrong input feature")
+                exit()
+
+            # uncomment for prediction spot-checking during training
+            # if epoch_index % 10 == 0:
+            #     print(y_pred)
+            #     print(y_gold)
+            # if epoch_index == 35:
+            #     sys.exit(1)
+            # print("THE PREDICTIONS ARE: ")
+            # print(y_pred)
+            # print(y_gold)
+
+            # For first prediction
+            y_pred_acc = y_pred_acc.squeeze(1).to(device)
+            preds_acc_holder.extend(y_pred_acc.tolist())
+            ys_acc_holder.extend(y_gold_acc.tolist())
+
+            # For second prediction
+            y_pred_flu = y_pred_flu.squeeze(1).to(device)
+            preds_flu_holder.extend(y_pred_flu.tolist())
+            ys_flu_holder.extend(y_gold_flu.tolist())
+
+            # For third prediction
+            y_pred_comp = y_pred_comp.squeeze(1).to(device)
+            preds_comp_holder.extend(y_pred_comp.tolist())
+            ys_comp_holder.extend(y_gold_comp.tolist())
+
+            loss1 = loss_func(y_pred_acc, y_gold_acc)
+            loss2 = loss_func(y_pred_flu, y_gold_flu)
+            loss3 = loss_func(y_pred_comp, y_gold_comp)
+            loss = (loss1 + loss2 + loss3) / 3
+
+            loss_t = loss.item()
+
+            running_loss += (loss_t - running_loss) / (batch_index + 1)
+
+        # print("Overall val loss: {0}, overall val acc: {1}".format(running_loss, running_acc))
+        if rating == "acc":
+            epoch_val_loss = mean_squared_error(ys_acc_holder, preds_acc_holder)
+            epoch_val_r2 = calc_r_squared(ys_acc_holder, preds_acc_holder)
+        elif rating == "flu":
+            epoch_val_loss = mean_squared_error(ys_flu_holder, preds_flu_holder)
+            epoch_val_r2 = calc_r_squared(ys_flu_holder, preds_flu_holder)
+        elif rating == "comp":
+            epoch_val_loss = mean_squared_error(ys_comp_holder, preds_comp_holder)
+            epoch_val_r2 = calc_r_squared(ys_comp_holder, preds_comp_holder)
+        else:
+            print("Wrong rating!")
+            sys.exit(1)
+
+        train_state["val_r2"].append(epoch_val_r2)
+        print("Epoch {0}\tDev R2: {1}\tDev Loss: {2}".format(epoch_index, epoch_val_r2, running_loss))
         # add loss and accuracy to train state
         # train_state["val_loss"].append(epoch_val_loss)
         train_state["val_loss"].append(running_loss)
@@ -1752,7 +2100,8 @@ def test_model_cv(
         ys_holder.extend(y_gold.tolist())
         gold_labels.extend(y_gold.tolist())
 
-        loss_t = loss_func(y_pred, y_gold)
+        loss = loss_func(y_pred, y_gold)
+        loss_t = loss.item()
         running_loss += (loss_t - running_loss) / (batch_index + 1)
 
     result_file_cv = result_file.replace(".csv", "_cv.csv")
@@ -1776,6 +2125,7 @@ def test_model_multi_single_cv(
         result_file,
         model_type,
         lr,
+        loss_func,
         device="cpu",
         gold_labels=[],
         pred_labels=[]
@@ -1789,6 +2139,7 @@ def test_model_multi_single_cv(
     # reset loss and accuracy to zero
 
     # set classifier to evaluation mode
+    running_loss = 0.
     classifier.eval()
 
     # set holders to use for error analysis
@@ -1829,9 +2180,9 @@ def test_model_multi_single_cv(
             )
 
         elif feats == "AudioPhon":
-            audio_batch_feat = batch["acoustic"].clone().detach().to(device)
+            audio_batch_feat = batch["audio"].clone().detach().to(device)
             audio_batch_feat = audio_batch_feat.transpose(1, 2)
-            audio_batch_length = batch['acoustic_length'].clone().detach()
+            audio_batch_length = batch['length'].clone().detach()
 
             rhythm_batch_feat = batch['rhythm'].clone().detach().to(device)
 
@@ -1881,8 +2232,14 @@ def test_model_multi_single_cv(
         ys_holder.extend(y_gold.tolist())
         gold_labels.extend(y_gold.tolist())
 
+        loss = loss_func(y_pred, y_gold)
+        loss_t = loss.item()
+        running_loss += (loss_t - running_loss) / (batch_index + 1)
+
+
     result_file_cv = result_file.replace(".csv", "_cv.csv")
-    cv_loss = mean_squared_error(ys_holder, preds_holder)
+    # cv_loss = mean_squared_error(ys_holder, preds_holder)
+    cv_loss = running_loss
     # cv_r2 = r2_score(ys_holder, preds_holder)
     cv_r2 = calc_r_squared(ys_holder, preds_holder)
     cv_result = "{0}\t{1}\t{2}\t{3}\t{4}\t{5}\t{6}\n".format(model_type, cv_idx, feats, rating, lr, cv_r2, cv_loss)
@@ -1901,6 +2258,7 @@ def test_model_single_multi_cv(
         result_file,
         model_type,
         lr,
+        loss_func,
         device="cpu",
         gold_labels=[],
         pred_labels=[]
@@ -1914,6 +2272,7 @@ def test_model_single_multi_cv(
     # reset loss and accuracy to zero
 
     # set classifier to evaluation mode
+    running_loss = 0.
     classifier.eval()
 
     # set holders to use for error analysis
@@ -1982,6 +2341,18 @@ def test_model_single_multi_cv(
         preds_comp_holder.extend(y_pred_comp.tolist())
         ys_comp_holder.extend(y_gold_comp.tolist())
 
+         # step 3. compute the loss
+        # Calculate Loss
+        loss1 = loss_func(y_pred_acc, y_gold_acc)
+        loss2 = loss_func(y_pred_flu, y_gold_flu)
+        loss3 = loss_func(y_pred_comp, y_gold_comp)
+        loss = (loss1 + loss2 + loss3) / 3
+
+        # step 4. use loss to produce gradients
+        loss_t = loss.item()
+
+        running_loss += (loss_t - running_loss) / (batch_index + 1)
+
         if rating == "acc":
             pred_labels.extend(y_pred_acc.tolist())
             gold_labels.extend(y_gold_acc.tolist())
@@ -2007,7 +2378,178 @@ def test_model_single_multi_cv(
         sys.exit(1)
 
     result_file_cv = result_file.replace(".csv", "_cv.csv")
+    # cv_loss = running_loss
+    # cv_r2 = r2_score(ys_holder, preds_holder)
+    # cv_r2 = calc_r_squared(ys_holder, preds_holder)
+    cv_result = "{0}\t{1}\t{2}\t{3}\t{4}\t{5}\t{6}\n".format(model_type, cv_idx, feats, rating, lr, cv_r2, cv_loss)
+
+    with open(result_file_cv, "a") as cv_out:
+        cv_out.write(cv_result)
+
+
+def test_model_multi_multi_cv(
+        classifier,
+        test_ds,
+        cv_idx,
+        batch_size,
+        rating,
+        feats,
+        result_file,
+        model_type,
+        lr,
+        loss_func,
+        device="cpu",
+        gold_labels=[],
+        pred_labels=[]
+):
+    """
+    Test a pretrained model
+    """
+    # Iterate over validation set--put it in a dataloader
+    val_batches = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
+
+    # reset loss and accuracy to zero
+
+    # set classifier to evaluation mode
+    running_loss = 0.0
+    classifier.eval()
+
+    # set holders to use for error analysis
+    ys_acc_holder = []
+    ys_flu_holder = []
+    ys_comp_holder = []
+    preds_acc_holder = []
+    preds_flu_holder = []
+    preds_comp_holder = []
+
+    # for each batch in the dataloader
+    classifier.eval()
+
+    for batch_index, batch in enumerate(val_batches):
+        y_gold_acc = batch["acc"].clone().detach().to(torch.float).to(device)
+        y_gold_flu = batch["flu"].clone().detach().to(torch.float).to(device)
+        y_gold_comp = batch["comp"].clone().detach().to(torch.float).to(device)
+        # y_gold = y_gold.squeeze(1).to(torch.float)
+
+        # step 2. select input and compute output
+
+        if feats == "AudioAcoustic":
+            audio_batch_feat = batch['audio'].clone().detach().to(device)
+            audio_batch_feat = audio_batch_feat.transpose(1, 2)
+
+            audio_batch_length = batch['length'].clone().detach()
+
+            acoustic_batch_feat = batch["acoustic"].clone().detach().to(device)
+            # acoustic_batch_length = batch['acoustic_length'].clone().detach()
+
+            y_pred = classifier(
+                feats=feats,
+                input_features=[audio_batch_feat, acoustic_batch_feat],
+                input_lengths=audio_batch_length
+            )
+
+        elif feats == "AudioPhon":
+            audio_batch_feat = batch["acoustic"].clone().detach().to(device)
+            audio_batch_feat = audio_batch_feat.transpose(1, 2)
+            audio_batch_length = batch['acoustic_length'].clone().detach()
+
+            rhythm_batch_feat = batch['rhythm'].clone().detach().to(device)
+
+            y_pred_acc, y_pred_flu, y_pred_comp = classifier(
+                feats=feats,
+                input_features=[audio_batch_feat, rhythm_batch_feat],
+                input_lengths=audio_batch_length
+            )
+
+        elif feats == "AcousticPhon":
+            acoustic_batch_feat = batch["acoustic"].clone().detach().to(device)
+            acoustic_batch_length = batch['acoustic_length'].clone().detach()
+
+            rhythm_batch_feat = batch['rhythm'].clone().detach().to(device)
+
+            y_pred_acc, y_pred_flu, y_pred_comp = classifier(
+                feats=feats,
+                input_features=[acoustic_batch_feat, rhythm_batch_feat],
+                input_lengths=acoustic_batch_length
+            )
+        elif feats == "All":
+            audio_batch_feat = batch['audio'].clone().detach().to(device)
+            audio_batch_feat = audio_batch_feat.transpose(1, 2)
+
+            audio_batch_length = batch['length'].clone().detach()
+
+            acoustic_batch_feat = batch["acoustic"].clone().detach().to(device)
+            # acoustic_batch_length = batch['acoustic_length'].clone().detach()
+
+            rhythm_batch_feat = batch['rhythm'].clone().detach().to(device)
+
+            y_pred_acc, y_pred_flu, y_pred_comp = classifier(
+                feats=feats,
+                input_features=[audio_batch_feat, acoustic_batch_feat, rhythm_batch_feat],
+                input_lengths=audio_batch_length
+            )
+
+        else:
+            print("Wrong input feature")
+            exit()
+
+        # For first prediction
+        y_pred_acc = y_pred_acc.squeeze(1).to(device)
+        preds_acc_holder.extend(y_pred_acc.tolist())
+        ys_acc_holder.extend(y_gold_acc.tolist())
+
+        # For second prediction
+        y_pred_flu = y_pred_flu.squeeze(1).to(device)
+        preds_flu_holder.extend(y_pred_flu.tolist())
+        ys_flu_holder.extend(y_gold_flu.tolist())
+
+        # For third prediction
+        y_pred_comp = y_pred_comp.squeeze(1).to(device)
+        preds_comp_holder.extend(y_pred_comp.tolist())
+        ys_comp_holder.extend(y_gold_comp.tolist())
+
+        # step 3. compute the loss
+        # Calculate Loss
+        loss1 = loss_func(y_pred_acc, y_gold_acc)
+        loss2 = loss_func(y_pred_flu, y_gold_flu)
+        loss3 = loss_func(y_pred_comp, y_gold_comp)
+        loss = (loss1 + loss2 + loss3) / 3
+
+        # step 4. use loss to produce gradients
+        loss.backward()
+        loss_t = loss.item()
+
+        running_loss += (loss_t - running_loss) / (batch_index + 1)
+
+        if rating == "acc":
+            pred_labels.extend(y_pred_acc.tolist())
+            gold_labels.extend(y_gold_acc.tolist())
+        elif rating == "flu":
+            pred_labels.extend(y_pred_flu.tolist())
+            gold_labels.extend(y_gold_flu.tolist())
+        elif rating == "comp":
+            pred_labels.extend(y_pred_comp.tolist())
+            gold_labels.extend(y_gold_comp.tolist())
+
+        
+
+    # print("Overall val loss: {0}, overall val acc: {1}".format(running_loss, running_acc))
+    if rating == "acc":
+        cv_loss = mean_squared_error(ys_acc_holder, preds_acc_holder)
+        cv_r2 = calc_r_squared(ys_acc_holder, preds_acc_holder)
+    elif rating == "flu":
+        cv_loss = mean_squared_error(ys_flu_holder, preds_flu_holder)
+        cv_r2 = calc_r_squared(ys_flu_holder, preds_flu_holder)
+    elif rating == "comp":
+        cv_loss = mean_squared_error(ys_comp_holder, preds_comp_holder)
+        cv_r2 = calc_r_squared(ys_comp_holder, preds_comp_holder)
+    else:
+        print("Wrong rating!")
+        sys.exit(1)
+
+    result_file_cv = result_file.replace(".csv", "_cv.csv")
     # cv_loss = mean_squared_error(ys_holder, preds_holder)
+    # cv_loss = running_loss
     # cv_r2 = r2_score(ys_holder, preds_holder)
     # cv_r2 = calc_r_squared(ys_holder, preds_holder)
     cv_result = "{0}\t{1}\t{2}\t{3}\t{4}\t{5}\t{6}\n".format(model_type, cv_idx, feats, rating, lr, cv_r2, cv_loss)
